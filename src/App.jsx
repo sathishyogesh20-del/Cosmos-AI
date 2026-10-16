@@ -8,7 +8,7 @@ export default function App() {
   if (loading) {
     return (
       <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100dvh', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: '#080b1a', fontFamily: "'Space Grotesk', sans-serif"
       }}>
         <div style={{

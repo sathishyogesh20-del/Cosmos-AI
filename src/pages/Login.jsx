@@ -1,7 +1,19 @@
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, signInAsGuest } = useAuth();
+  const [error, setError] = useState('');
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      console.warn('Google sign-in error:', err);
+      setError('Google sign-in is not available or was canceled. You can continue as Guest!');
+    }
+  };
 
   return (
     <div style={{
@@ -39,8 +51,9 @@ export default function Login() {
         position: 'relative', zIndex: 1,
         background: 'linear-gradient(135deg, rgba(13,15,40,0.95), rgba(16,10,50,0.9))',
         border: '1px solid rgba(124,111,255,0.3)',
-        borderRadius: 24, padding: '48px 40px',
-        width: '100%', maxWidth: 400, textAlign: 'center',
+        borderRadius: 24, padding: '36px 24px',
+        width: '92%', maxWidth: 400, textAlign: 'center',
+        boxSizing: 'border-box',
         boxShadow: '0 24px 80px rgba(60,20,160,0.4), 0 0 0 1px rgba(124,111,255,0.1)'
       }}>
         {/* Cosmos orb */}
@@ -58,18 +71,28 @@ export default function Login() {
         }}>Cosmos-AI</h1>
 
         <p style={{ color: '#666', fontSize: 14, margin: '0 0 8px' }}>by COSMOS Ecosystem</p>
-        <p style={{ color: '#888', fontSize: 13, margin: '0 0 36px', lineHeight: 1.6 }}>
+        <p style={{ color: '#888', fontSize: 13, margin: '0 0 32px', lineHeight: 1.6 }}>
           Your intelligent space-powered AI assistant.<br />
           Expert in coding, research, and creation.
         </p>
 
-        <button onClick={signInWithGoogle} style={{
+        {error && (
+          <div style={{
+            fontSize: 12, color: '#ff9d9d', background: 'rgba(255,80,80,0.1)',
+            border: '1px solid rgba(255,80,80,0.25)', borderRadius: 8,
+            padding: '8px 12px', marginBottom: 16, lineHeight: 1.4
+          }}>
+            {error}
+          </div>
+        )}
+
+        <button onClick={handleGoogleSignIn} style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
           padding: '14px 20px', borderRadius: 12, cursor: 'pointer',
           background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
           color: '#e0e0ff', fontSize: 15, fontWeight: 600,
           fontFamily: "'Space Grotesk', sans-serif",
-          transition: 'all 0.2s', marginBottom: 16
+          transition: 'all 0.2s', marginBottom: 12
         }}
           onMouseEnter={e => {
             e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
@@ -87,6 +110,26 @@ export default function Login() {
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
           Continue with Google
+        </button>
+
+        <button onClick={signInAsGuest} style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          padding: '12px 20px', borderRadius: 12, cursor: 'pointer',
+          background: 'rgba(124,111,255,0.12)', border: '1px solid rgba(124,111,255,0.25)',
+          color: '#c0b0ff', fontSize: 14, fontWeight: 500,
+          fontFamily: "'Space Grotesk', sans-serif",
+          transition: 'all 0.2s', marginBottom: 20
+        }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(124,111,255,0.2)';
+            e.currentTarget.style.borderColor = 'rgba(124,111,255,0.5)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(124,111,255,0.12)';
+            e.currentTarget.style.borderColor = 'rgba(124,111,255,0.25)';
+          }}
+        >
+          <span>🚀</span> Continue as Guest
         </button>
 
         <p style={{ color: '#444', fontSize: 11, margin: 0 }}>

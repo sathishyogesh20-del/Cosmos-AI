@@ -57,8 +57,14 @@ export const COSMOS_MODELS = [
 ];
 
 export const getGroqModel = (cosmosModelId) => {
-  const model = COSMOS_MODELS.find(m => m.id === cosmosModelId);
-  return model ? model.groqModel : 'llama-3.3-70b-versatile';
+  const map = {
+    'cosmos-flash': 'openai/gpt-oss-20b',
+    'cosmos-nova': 'openai/gpt-oss-120b',
+    'cosmos-stellar': 'openai/gpt-oss-120b',
+    'cosmos-pulsar': 'openai/gpt-oss-120b',
+    'cosmos-infinity': 'openai/gpt-oss-120b'
+  };
+  return map[cosmosModelId] || 'openai/gpt-oss-120b';
 };
 
 export const getModelById = (id) => COSMOS_MODELS.find(m => m.id === id) || COSMOS_MODELS[1];
