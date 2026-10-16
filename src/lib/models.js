@@ -2,7 +2,7 @@ export const COSMOS_MODELS = [
   {
     id: 'cosmos-flash',
     name: 'Cosmos Flash',
-    groqModel: 'llama-3.1-8b-instant',
+    groqModel: 'openai/gpt-oss-20b',
     icon: '⚡',
     color: '#00d4ff',
     description: 'Lightning fast for quick answers and casual chat',
@@ -13,7 +13,7 @@ export const COSMOS_MODELS = [
   {
     id: 'cosmos-nova',
     name: 'Cosmos Nova',
-    groqModel: 'llama-3.3-70b-versatile',
+    groqModel: 'openai/gpt-oss-120b',
     icon: '🌟',
     color: '#7c6fff',
     description: 'Balanced intelligence for everyday tasks',
@@ -24,7 +24,7 @@ export const COSMOS_MODELS = [
   {
     id: 'cosmos-stellar',
     name: 'Cosmos Stellar',
-    groqModel: 'deepseek-r1-distill-llama-70b',
+    groqModel: 'openai/gpt-oss-120b',
     icon: '💻',
     color: '#00ff9d',
     description: 'Optimized for coding, debugging and technical work',
@@ -35,7 +35,7 @@ export const COSMOS_MODELS = [
   {
     id: 'cosmos-pulsar',
     name: 'Cosmos Pulsar',
-    groqModel: 'mixtral-8x7b-32768',
+    groqModel: 'llama-3.3-70b-versatile',
     icon: '🔮',
     color: '#ff6b9d',
     description: 'Powerful reasoning for complex multi-step problems',
