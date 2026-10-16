@@ -35,7 +35,7 @@ export const COSMOS_MODELS = [
   {
     id: 'cosmos-pulsar',
     name: 'Cosmos Pulsar',
-    groqModel: 'llama-3.3-70b-versatile',
+    groqModel: 'openai/gpt-oss-120b',
     icon: '🔮',
     color: '#ff6b9d',
     description: 'Powerful reasoning for complex multi-step problems',
@@ -46,7 +46,7 @@ export const COSMOS_MODELS = [
   {
     id: 'cosmos-infinity',
     name: 'Cosmos Infinity',
-    groqModel: 'llama-3.3-70b-versatile',
+    groqModel: 'openai/gpt-oss-120b',
     icon: '🌌',
     color: '#ffd700',
     description: 'Maximum intelligence for research, files and deep analysis',
