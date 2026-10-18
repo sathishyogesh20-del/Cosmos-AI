@@ -2,30 +2,51 @@ import { createContext, useContext, useState, useEffect } from 'react';
 
 const SettingsContext = createContext(null);
 
+export const CLAUDE_STYLES = [
+  {
+    id: 'normal',
+    name: 'Normal (Claude Standard)',
+    description: 'Thoughtful, balanced, articulate, and complete answers.',
+    promptModifier: 'Respond with a balanced, natural, thoughtful, and articulate tone.'
+  },
+  {
+    id: 'concise',
+    name: 'Concise & Direct',
+    description: 'Short paragraphs, bullet points, zero fluff or unnecessary preamble.',
+    promptModifier: 'Be concise, direct, high-density, and structured. Avoid unnecessary preamble.'
+  },
+  {
+    id: 'explanatory',
+    name: 'Explanatory & Educational',
+    description: 'Breaks concepts down step-by-step with practical analogies and deep intuition.',
+    promptModifier: 'Explain concepts thoroughly with step-by-step intuition, analogies, and detailed architectural reasoning.'
+  },
+  {
+    id: 'formal',
+    name: 'Formal & Executive',
+    description: 'Polished, professional, publication-ready phrasing.',
+    promptModifier: 'Maintain a professional, publication-ready, executive tone.'
+  }
+];
+
 export const SYSTEM_PERSONAS = [
   {
     id: 'general',
-    name: 'Cosmos Default',
-    description: 'Thoughtful, balanced, and deep responses across all subjects.',
+    name: 'Cosmos Assistant',
+    description: 'Versatile intelligence across all topics and general workflows.',
     prompt: 'You are Cosmos-AI, an advanced AI assistant created to be deeply helpful, nuanced, articulate, and accurate.'
   },
   {
     id: 'coding',
-    name: 'Senior Software Engineer',
-    description: 'Concise, production-grade code, architectural best practices, and clean explanations.',
-    prompt: 'You are a Senior Principal Software Engineer at Cosmos. Provide production-ready, clean, performant, and well-documented code with practical architectural reasoning.'
+    name: 'Principal Software Architect',
+    description: 'Production-ready code, strict types, architecture patterns, and optimizations.',
+    prompt: 'You are a Principal Software Architect. Provide production-ready, clean, performant, and well-documented code with architectural reasoning.'
   },
   {
     id: 'research',
-    name: 'Deep Research Scientist',
-    description: 'Rigorous analysis, academic depth, nuanced breakdown of complex topics.',
+    name: 'Deep Research Fellow',
+    description: 'Academic depth, analytical rigor, evidence-backed evaluation.',
     prompt: 'You are an elite Research Fellow in AI and Computer Science. Provide rigorous, evidence-based, thorough, and highly analytical answers.'
-  },
-  {
-    id: 'concise',
-    name: 'Executive & Direct',
-    description: 'Direct to the point, bullet points, zero fluff.',
-    prompt: 'You are an executive AI assistant. Be extremely direct, concise, high-density, and structured. Eliminate unnecessary pleasantries.'
   }
 ];
 
@@ -33,11 +54,19 @@ export function SettingsProvider({ children }) {
   const [language, setLanguage] = useState(() => localStorage.getItem('cosmos-lang') || 'auto');
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('cosmos-model') || 'cosmos-stellar');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [groqApiKey, setGroqApiKeyState] = useState(() => localStorage.getItem('cosmos_groq_api_key') || import.meta.env.VITE_GROQ_API_KEY || '');
-  const [tavilyApiKey, setTavilyApiKeyState] = useState(() => localStorage.getItem('cosmos_tavily_api_key') || import.meta.env.VITE_TAVILY_API_KEY || '');
-  const [temperature, setTemperatureState] = useState(() => Number(localStorage.getItem('cosmos_temperature') || 0.7));
-  const [systemPersona, setSystemPersonaState] = useState(() => localStorage.getItem('cosmos_persona') || 'general');
-  const [streamingEnabled, setStreamingEnabledState] = useState(() => localStorage.getItem('cosmos_streaming') !== 'false');
+  const [temperature, setTemperatureState] = useState(() => Number(localStorage.getItem('cosmos-temperature') || 0.7));
+  const [systemPersona, setSystemPersonaState] = useState(() => localStorage.getItem('cosmos-persona') || 'general');
+  const [responseStyle, setResponseStyleState] = useState(() => localStorage.getItem('cosmos-style') || 'normal');
+  const [extendedThinking, setExtendedThinkingState] = useState(() => localStorage.getItem('cosmos-thinking') !== 'false');
+  const [streamingEnabled, setStreamingEnabledState] = useState(() => localStorage.getItem('cosmos-streaming') !== 'false');
+  const [fontSize, setFontSizeState] = useState(() => localStorage.getItem('cosmos-font-size') || 'default');
+  const [pinnedChatIds, setPinnedChatIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cosmos-pinned-chats') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   const updateLanguage = (lang) => {
     setLanguage(lang);
@@ -49,37 +78,42 @@ export function SettingsProvider({ children }) {
     localStorage.setItem('cosmos-model', model);
   };
 
-  const updateGroqApiKey = (key) => {
-    setGroqApiKeyState(key);
-    if (key) {
-      localStorage.setItem('cosmos_groq_api_key', key);
-    } else {
-      localStorage.removeItem('cosmos_groq_api_key');
-    }
-  };
-
-  const updateTavilyApiKey = (key) => {
-    setTavilyApiKeyState(key);
-    if (key) {
-      localStorage.setItem('cosmos_tavily_api_key', key);
-    } else {
-      localStorage.removeItem('cosmos_tavily_api_key');
-    }
-  };
-
   const updateTemperature = (temp) => {
     setTemperatureState(temp);
-    localStorage.setItem('cosmos_temperature', String(temp));
+    localStorage.setItem('cosmos-temperature', String(temp));
   };
 
   const updateSystemPersona = (personaId) => {
     setSystemPersonaState(personaId);
-    localStorage.setItem('cosmos_persona', personaId);
+    localStorage.setItem('cosmos-persona', personaId);
+  };
+
+  const updateResponseStyle = (styleId) => {
+    setResponseStyleState(styleId);
+    localStorage.setItem('cosmos-style', styleId);
+  };
+
+  const updateExtendedThinking = (enabled) => {
+    setExtendedThinkingState(enabled);
+    localStorage.setItem('cosmos-thinking', String(enabled));
   };
 
   const updateStreamingEnabled = (enabled) => {
     setStreamingEnabledState(enabled);
-    localStorage.setItem('cosmos_streaming', String(enabled));
+    localStorage.setItem('cosmos-streaming', String(enabled));
+  };
+
+  const updateFontSize = (size) => {
+    setFontSizeState(size);
+    localStorage.setItem('cosmos-font-size', size);
+  };
+
+  const togglePinChat = (chatId) => {
+    setPinnedChatIds(prev => {
+      const next = prev.includes(chatId) ? prev.filter(id => id !== chatId) : [chatId, ...prev];
+      localStorage.setItem('cosmos-pinned-chats', JSON.stringify(next));
+      return next;
+    });
   };
 
   return (
@@ -87,12 +121,14 @@ export function SettingsProvider({ children }) {
       language, updateLanguage,
       selectedModel, updateModel,
       settingsOpen, setSettingsOpen,
-      groqApiKey, updateGroqApiKey,
-      tavilyApiKey, updateTavilyApiKey,
       temperature, updateTemperature,
       systemPersona, updateSystemPersona,
+      responseStyle, updateResponseStyle,
+      extendedThinking, updateExtendedThinking,
       streamingEnabled, updateStreamingEnabled,
-      hasLiveKey: Boolean(groqApiKey)
+      fontSize, updateFontSize,
+      pinnedChatIds, togglePinChat,
+      hasLiveKey: Boolean(import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem('cosmos_groq_api_key'))
     }}>
       {children}
     </SettingsContext.Provider>

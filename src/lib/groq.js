@@ -345,6 +345,7 @@ export async function sendMessage({
   fileContent = null,
   temperature = 0.7,
   systemPersona = 'general',
+  responseStyle = 'normal',
   onChunk = null,
   signal = null
 }) {
@@ -366,7 +367,16 @@ export async function sendMessage({
     personaInstruction = 'You are an executive AI assistant. Be extremely direct, concise, high-density, and structured. Eliminate unnecessary pleasantries.';
   }
 
-  let systemPrompt = `${personaInstruction}
+  let styleModifier = '';
+  if (responseStyle === 'concise') {
+    styleModifier = '\nStyle: Be concise, direct, high-density, and structured. Avoid unnecessary preamble.';
+  } else if (responseStyle === 'explanatory') {
+    styleModifier = '\nStyle: Explain concepts thoroughly with step-by-step intuition, analogies, and detailed architectural reasoning.';
+  } else if (responseStyle === 'formal') {
+    styleModifier = '\nStyle: Maintain a professional, publication-ready, executive tone.';
+  }
+
+  let systemPrompt = `${personaInstruction}${styleModifier}
 
 ${langPrompt}
 

@@ -29,6 +29,7 @@ function CodeBlock({ code, language, onOpenArtifact }) {
       borderRadius: 12,
       overflow: 'hidden',
       margin: '16px 0',
+      maxWidth: '100%',
       border: '1px solid rgba(255, 255, 255, 0.08)',
       background: '#13141b',
       boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)'
@@ -144,7 +145,13 @@ export default function MessageRenderer({ content, onOpenArtifact }) {
   }
 
   return (
-    <div style={{ lineHeight: 1.7, color: '#e5e7eb', fontSize: 14.5 }}>
+    <div style={{
+      lineHeight: 1.7,
+      color: '#e5e7eb',
+      fontSize: 14.5,
+      wordBreak: 'break-word',
+      overflowWrap: 'anywhere'
+    }}>
       {parts.map((part, i) => {
         if (part.type === 'code') {
           return (

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut,
-  ChevronLeft, ChevronRight, Search, Edit2, Check, X, Sparkles,
-  Smartphone
+  ChevronLeft, ChevronRight, Search, Edit2, Check, X,
+  Star, Download, ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -19,18 +19,14 @@ export default function Sidebar({
   isMobile
 }) {
   const { user, logout } = useAuth();
-  const { setSettingsOpen, hasLiveKey } = useSettings();
+  const { setSettingsOpen, hasLiveKey, pinnedChatIds, togglePinChat } = useSettings();
   const [conversations, setConversations] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
 
-  useEffect(() => {
-    if (!user) return;
-    loadConversations();
-  }, [user, currentConvId]);
-
   const loadConversations = async () => {
+    if (!user) return;
     try {
       const convs = await getConversations(user.uid);
       setConversations(convs || []);
@@ -38,6 +34,18 @@ export default function Sidebar({
       console.error('Error loading conversations:', e);
     }
   };
+
+  useEffect(() => {
+    if (!user) return;
+    loadConversations();
+
+    const handleChanged = () => {
+      loadConversations();
+    };
+
+    window.addEventListener('cosmos:conversations-changed', handleChanged);
+    return () => window.removeEventListener('cosmos:conversations-changed', handleChanged);
+  }, [user, currentConvId]);
 
   const handleDelete = async (e, convId) => {
     e.stopPropagation();
@@ -82,14 +90,213 @@ export default function Sidebar({
     }
   };
 
+  const handleExportHistory = () => {
+    if (conversations.length === 0) return;
+    const historyData = {
+      account: user?.email || user?.displayName || 'user',
+      exportedAt: new Date().toISOString(),
+      conversationsCount: conversations.length,
+      conversations: conversations
+    };
+    const blob = new Blob([JSON.stringify(historyData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cosmos-chat-history-${(user?.email || 'user').split('@')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredConvs = conversations.filter(c => {
     if (!searchQuery) return true;
     return (c.title || '').toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  // Base styling for desktop vs mobile drawer
-  const sidebarWidth = isMobile ? 290 : (collapsed ? 64 : 268);
-  const isVisible = !isMobile || mobileOpen;
+  const pinnedConvs = filteredConvs.filter(c => pinnedChatIds?.includes(c.id));
+  const unpinnedConvs = filteredConvs.filter(c => !pinnedChatIds?.includes(c.id));
+
+  // Time groupings like Claude.ai
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const SEVEN_DAYS = 7 * ONE_DAY;
+
+  const todayConvs = [];
+  const yesterdayConvs = [];
+  const last7DaysConvs = [];
+  const olderConvs = [];
+
+  unpinnedConvs.forEach(c => {
+    const time = c.updatedAt || c.createdAt || 0;
+    const diff = now - time;
+    if (diff < ONE_DAY) {
+      todayConvs.push(c);
+    } else if (diff < 2 * ONE_DAY) {
+      yesterdayConvs.push(c);
+    } else if (diff < SEVEN_DAYS) {
+      last7DaysConvs.push(c);
+    } else {
+      olderConvs.push(c);
+    }
+  });
+
+  const sidebarWidth = isMobile
+    ? Math.min(300, typeof window !== 'undefined' ? Math.floor(window.innerWidth * 0.84) : 290)
+    : (collapsed ? 64 : 268);
+
+  const renderConvItem = (conv) => {
+    const isSelected = currentConvId === conv.id;
+    const isEditing = editingId === conv.id;
+    const isPinned = pinnedChatIds?.includes(conv.id);
+
+    return (
+      <div
+        key={conv.id}
+        onClick={() => handleSelectAndClose(conv.id)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 10px',
+          borderRadius: 8,
+          cursor: 'pointer',
+          background: isSelected ? 'rgba(129, 140, 248, 0.16)' : 'transparent',
+          border: isSelected ? '1px solid rgba(129, 140, 248, 0.32)' : '1px solid transparent',
+          color: isSelected ? '#e0e7ff' : '#9ca3af',
+          fontSize: 13,
+          marginBottom: 2,
+          transition: 'all 0.12s'
+        }}
+        onMouseEnter={e => {
+          if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+        }}
+        onMouseLeave={e => {
+          if (!isSelected) e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <MessageSquare size={14} style={{ flexShrink: 0, color: isSelected ? '#818cf8' : '#6b7280' }} />
+
+        {isEditing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }} onClick={e => e.stopPropagation()}>
+            <input
+              type="text"
+              value={editTitle}
+              onChange={e => setEditTitle(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleSaveRename(e, conv.id);
+                if (e.key === 'Escape') handleCancelRename(e);
+              }}
+              autoFocus
+              style={{
+                flex: 1,
+                background: '#1a1b23',
+                border: '1px solid #818cf8',
+                borderRadius: 4,
+                color: '#fff',
+                fontSize: isMobile ? 16 : 12,
+                padding: '4px 6px',
+                outline: 'none'
+              }}
+            />
+            <button onClick={e => handleSaveRename(e, conv.id)} style={{ background: 'none', border: 'none', color: '#34d399', cursor: 'pointer', padding: 2 }}>
+              <Check size={12} />
+            </button>
+            <button onClick={handleCancelRename} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 2 }}>
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <span style={{
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontWeight: isSelected ? 600 : 400
+            }}>
+              {conv.title || 'New conversation'}
+            </span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePinChat(conv.id);
+                }}
+                title={isPinned ? "Unpin chat" : "Pin chat to top"}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: isPinned ? '#fbbf24' : '#6b7280',
+                  padding: 3,
+                  display: 'flex',
+                  opacity: isPinned || isSelected || isMobile ? 0.9 : 0.3
+                }}
+              >
+                <Star size={12} fill={isPinned ? '#fbbf24' : 'none'} />
+              </button>
+
+              <button
+                onClick={e => handleStartRename(e, conv)}
+                title="Rename chat"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: 3,
+                  display: 'flex',
+                  opacity: isSelected || isMobile ? 0.9 : 0.3
+                }}
+              >
+                <Edit2 size={12} />
+              </button>
+
+              <button
+                onClick={e => handleDelete(e, conv.id)}
+                title="Delete chat"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: 3,
+                  display: 'flex',
+                  opacity: isSelected || isMobile ? 0.9 : 0.3
+                }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderSection = (title, items, icon = null) => {
+    if (!items || items.length === 0) return null;
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          fontSize: 10.5,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: 0.8,
+          color: '#6b7280',
+          padding: '6px 8px 4px'
+        }}>
+          {icon}
+          <span>{title}</span>
+          <span style={{ fontSize: 10, opacity: 0.7 }}>({items.length})</span>
+        </div>
+        {items.map(renderConvItem)}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -135,7 +342,7 @@ export default function Sidebar({
           display: 'flex',
           alignItems: 'center',
           justifyContent: (!isMobile && collapsed) ? 'center' : 'space-between',
-          padding: (!isMobile && collapsed) ? '16px 0' : '16px 14px',
+          padding: (!isMobile && collapsed) ? '16px 0' : (isMobile ? 'max(14px, env(safe-area-inset-top)) 14px 14px' : '16px 14px'),
           borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
         }}>
           {(isMobile || !collapsed) && (
@@ -229,7 +436,7 @@ export default function Sidebar({
 
         {/* Search Input (when expanded or on mobile) */}
         {(isMobile || !collapsed) && (
-          <div style={{ padding: '4px 12px 10px' }}>
+          <div style={{ padding: '4px 12px 8px' }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -251,7 +458,7 @@ export default function Sidebar({
                   border: 'none',
                   outline: 'none',
                   color: '#e5e7eb',
-                  fontSize: 12.5,
+                  fontSize: isMobile ? 16 : 12.5,
                   fontFamily: "'Space Grotesk', sans-serif"
                 }}
               />
@@ -267,128 +474,22 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Conversations list */}
+        {/* Conversations list with Claude-style time buckets */}
         {(isMobile || !collapsed) ? (
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
-            <div style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-              color: '#6b7280',
-              padding: '8px 8px 4px'
-            }}>
-              Recent Conversations
-            </div>
+            {/* Pinned section */}
+            {pinnedConvs.length > 0 && renderSection('Starred Chats', pinnedConvs, <Star size={11} fill="#fbbf24" color="#fbbf24" />)}
 
-            {filteredConvs.length === 0 ? (
+            {/* Time buckets */}
+            {todayConvs.length > 0 && renderSection('Today', todayConvs)}
+            {yesterdayConvs.length > 0 && renderSection('Yesterday', yesterdayConvs)}
+            {last7DaysConvs.length > 0 && renderSection('Previous 7 Days', last7DaysConvs)}
+            {olderConvs.length > 0 && renderSection('Older', olderConvs)}
+
+            {filteredConvs.length === 0 && (
               <div style={{ textAlign: 'center', color: '#6b7280', fontSize: 12, padding: '28px 8px' }}>
-                {searchQuery ? 'No matching chats found' : 'No conversations yet'}
+                {searchQuery ? 'No matching chats found' : 'No conversations yet. Start a new chat!'}
               </div>
-            ) : (
-              filteredConvs.map(conv => {
-                const isSelected = currentConvId === conv.id;
-                const isEditing = editingId === conv.id;
-
-                return (
-                  <div
-                    key={conv.id}
-                    onClick={() => handleSelectAndClose(conv.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '9px 10px',
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(129, 140, 248, 0.14)' : 'transparent',
-                      border: isSelected ? '1px solid rgba(129, 140, 248, 0.28)' : '1px solid transparent',
-                      color: isSelected ? '#e0e7ff' : '#9ca3af',
-                      fontSize: 13,
-                      marginBottom: 3,
-                      transition: 'all 0.12s'
-                    }}
-                  >
-                    <MessageSquare size={14} style={{ flexShrink: 0, color: isSelected ? '#818cf8' : '#6b7280' }} />
-
-                    {isEditing ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }} onClick={e => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={e => setEditTitle(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') handleSaveRename(e, conv.id);
-                            if (e.key === 'Escape') handleCancelRename(e);
-                          }}
-                          autoFocus
-                          style={{
-                            flex: 1,
-                            background: '#1a1b23',
-                            border: '1px solid #818cf8',
-                            borderRadius: 4,
-                            color: '#fff',
-                            fontSize: 12,
-                            padding: '3px 6px',
-                            outline: 'none'
-                          }}
-                        />
-                        <button onClick={e => handleSaveRename(e, conv.id)} style={{ background: 'none', border: 'none', color: '#34d399', cursor: 'pointer', padding: 2 }}>
-                          <Check size={12} />
-                        </button>
-                        <button onClick={handleCancelRename} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 2 }}>
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span style={{
-                          flex: 1,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          fontWeight: isSelected ? 600 : 400
-                        }}>
-                          {conv.title || 'New conversation'}
-                        </span>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                          <button
-                            onClick={e => handleStartRename(e, conv)}
-                            title="Rename chat"
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              color: '#6b7280',
-                              padding: 4,
-                              display: 'flex',
-                              opacity: isSelected || isMobile ? 0.9 : 0.4
-                            }}
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                          <button
-                            onClick={e => handleDelete(e, conv.id)}
-                            title="Delete chat"
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              color: '#6b7280',
-                              padding: 4,
-                              display: 'flex',
-                              opacity: isSelected || isMobile ? 0.9 : 0.4
-                            }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })
             )}
           </div>
         ) : (
@@ -397,20 +498,70 @@ export default function Sidebar({
 
         {/* User & Settings footer */}
         <div style={{
-          padding: (!isMobile && collapsed) ? '12px 8px' : '12px 10px',
+          padding: (!isMobile && collapsed) ? '10px 8px' : (isMobile ? '10px 10px max(14px, env(safe-area-inset-bottom))' : '10px 10px'),
           borderTop: '1px solid rgba(255, 255, 255, 0.07)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 4,
-          background: 'rgba(255, 255, 255, 0.01)'
+          gap: 3,
+          background: 'rgba(255, 255, 255, 0.015)'
         }}>
+          {/* Google Account Saved indicator card */}
+          {(isMobile || !collapsed) && user && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 10px',
+              marginBottom: 4,
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              borderRadius: 8
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12 }}>{user.isGoogle ? '🌐' : '👤'}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#c7d2fe' }}>
+                  {user.isGoogle ? 'Google Account' : 'Guest Mode'}
+                </span>
+              </div>
+              <span style={{ fontSize: 10, color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                ● History Saved
+              </span>
+            </div>
+          )}
+
+          {/* Export chat history button */}
+          {(isMobile || !collapsed) && conversations.length > 0 && (
+            <button
+              onClick={handleExportHistory}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 10px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#9ca3af',
+                fontSize: 12,
+                borderRadius: 6,
+                fontFamily: "'Space Grotesk', sans-serif"
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#e5e7eb'}
+              onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+              title="Download backup of your chat history"
+            >
+              <Download size={13} />
+              <span>Export History ({conversations.length})</span>
+            </button>
+          )}
+
           <button
             onClick={() => {
               setSettingsOpen(true);
               if (isMobile && setMobileOpen) setMobileOpen(false);
             }}
             style={bottomBtnStyle(!isMobile && collapsed)}
-            title="Settings & API Keys"
+            title="Settings & Preferences"
           >
             <Settings size={15} />
             {(isMobile || !collapsed) && <span>Settings</span>}
@@ -430,13 +581,14 @@ export default function Sidebar({
             </button>
           )}
 
+          {/* User profile tile */}
           {(isMobile || !collapsed) && user && (
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: 10,
               padding: '8px 10px',
-              marginTop: 4,
+              marginTop: 2,
               background: 'rgba(255, 255, 255, 0.03)',
               borderRadius: 8
             }}>
@@ -444,23 +596,23 @@ export default function Sidebar({
                 width: 28,
                 height: 28,
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                background: user.isGoogle ? 'linear-gradient(135deg, #4285f4, #34a853)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#fff',
-                fontSize: 13,
-                fontWeight: 600,
+                fontSize: 12,
+                fontWeight: 700,
                 flexShrink: 0
               }}>
                 {user.displayName?.[0]?.toUpperCase() || 'U'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {user.displayName || 'Cosmos Explorer'}
                 </span>
-                <span style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user.email || 'explorer@cosmos.ai'}
+                <span style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.email || 'Google Account'}
                 </span>
               </div>
             </div>
@@ -483,12 +635,12 @@ const bottomBtnStyle = (collapsed) => ({
   alignItems: 'center',
   justifyContent: collapsed ? 'center' : 'flex-start',
   gap: 10,
-  padding: collapsed ? '8px' : '9px 12px',
+  padding: collapsed ? '8px' : '8px 12px',
   background: 'transparent',
   border: 'none',
   cursor: 'pointer',
   color: '#9ca3af',
-  fontSize: 13,
+  fontSize: 12.5,
   borderRadius: 8,
   width: '100%',
   transition: 'all 0.15s',

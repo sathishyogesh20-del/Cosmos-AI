@@ -90,12 +90,11 @@ export default function ArtifactPanel({ artifacts, activeIndex = 0, onClose }) {
 
   const isHtml = artifact.type === 'html' || artifact.filename?.endsWith('.html');
 
-  // Container styling for mobile overlay vs desktop side-by-side
   const containerStyle = isFullscreen || isMobile
     ? {
         position: 'fixed',
         inset: 0,
-        zIndex: 95,
+        zIndex: 140,
         width: '100%',
         height: '100%',
         height: '100dvh',
@@ -103,7 +102,9 @@ export default function ArtifactPanel({ artifacts, activeIndex = 0, onClose }) {
         flexDirection: 'column',
         background: '#111217',
         boxShadow: 'none',
-        fontFamily: "'Space Grotesk', sans-serif"
+        fontFamily: "'Space Grotesk', sans-serif",
+        paddingTop: isMobile ? 'max(0px, env(safe-area-inset-top))' : 0,
+        paddingBottom: isMobile ? 'max(0px, env(safe-area-inset-bottom))' : 0
       }
     : {
         position: 'relative',

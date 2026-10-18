@@ -3,13 +3,14 @@ import {
   Send, Globe, Paperclip, X, Sparkles, Square,
   Copy, Check, RotateCcw, Volume2, VolumeX, ThumbsUp, ThumbsDown,
   Download, Edit3, PanelRightOpen, PanelRightClose, Menu,
-  ArrowDown, Trash2, Cpu, Code2, BookOpen, Lightbulb
+  ArrowDown, Trash2, Cpu, Code2, BookOpen, Lightbulb, Brain, ChevronDown,
+  ChevronLeft, ChevronRight, CornerDownLeft
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { sendMessage, readFileAsText } from '../lib/groq';
 import { getGroqModel, getModelById } from '../lib/models';
-import { createConversation, addMessage, getMessages } from '../lib/firestore';
+import { createConversation, addMessage, getMessages, getConversations } from '../lib/firestore';
 import MessageRenderer from '../components/MessageRenderer';
 import ArtifactPanel, { parseArtifacts, stripArtifacts } from '../components/ArtifactPanel';
 import ModelSelector from '../components/ModelSelector';
@@ -51,11 +52,35 @@ const QUICK_MODES = [
   { id: 'concise', label: 'Concise Bullet', icon: <Lightbulb size={13} />, model: 'cosmos-flash' }
 ];
 
+function getFollowUpSuggestions(content) {
+  const lower = (content || '').toLowerCase();
+  if (lower.includes('```') || lower.includes('def ') || lower.includes('function') || lower.includes('class')) {
+    return [
+      'Explain this code step-by-step',
+      'Add unit tests & edge cases',
+      'Optimize performance & complexity'
+    ];
+  }
+  if (lower.includes('table') || lower.includes('|') || lower.includes('vs')) {
+    return [
+      'Expand with real-world examples',
+      'Summarize key takeaways in bullet points',
+      'Compare trade-offs in detail'
+    ];
+  }
+  return [
+    'Can you elaborate further?',
+    'Provide practical implementation steps',
+    'Summarize in 3 key takeaways'
+  ];
+}
+
 export default function Chat() {
   const { user } = useAuth();
   const {
     selectedModel, updateModel, language, temperature,
-    systemPersona, updateSystemPersona, streamingEnabled, hasLiveKey
+    systemPersona, updateSystemPersona, responseStyle, extendedThinking,
+    streamingEnabled, fontSize, hasLiveKey
   } = useSettings();
 
   const [messages, setMessages] = useState([]);
@@ -78,8 +103,14 @@ export default function Chat() {
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const currentConvIdRef = useRef(null);
 
-  // Track responsive screen size
+  // Sync ref with currentConvId
+  useEffect(() => {
+    currentConvIdRef.current = currentConvId;
+  }, [currentConvId]);
+
+  // Track responsive screen size & mobile viewport changes
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
@@ -89,7 +120,17 @@ export default function Chat() {
       }
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+    }
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+      }
+    };
   }, []);
 
   // Auto-scroll when messages update, unless user scrolled up
@@ -128,13 +169,32 @@ export default function Chat() {
     };
   }, []);
 
+  // Auto-restore user's previous conversation on initial launch
+  useEffect(() => {
+    if (!user) return;
+    let isMounted = true;
+    (async () => {
+      try {
+        const convs = await getConversations(user.uid);
+        if (isMounted && convs && convs.length > 0 && !currentConvIdRef.current && messages.length === 0) {
+          const latest = convs[0];
+          handleSelectConv(latest.id, latest.title);
+        }
+      } catch (err) {
+        console.warn('Auto-restore skipped:', err);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [user]);
+
   const handleNewChat = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    setMessages([]);
+    currentConvIdRef.current = null;
     setCurrentConvId(null);
     setConvTitle('New Chat');
+    setMessages([]);
     setArtifacts([]);
     setShowArtifacts(false);
     setAttachedFiles([]);
@@ -143,17 +203,23 @@ export default function Chat() {
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
 
-  const handleSelectConv = async (convId) => {
-    if (!user) return;
+  const handleSelectConv = async (convId, knownTitle = null) => {
+    if (!user || !convId) return;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    currentConvIdRef.current = convId;
     setCurrentConvId(convId);
+    if (knownTitle) setConvTitle(knownTitle);
     setLoading(false);
 
     try {
       const msgs = await getMessages(user.uid, convId);
-      const formatted = msgs.map(m => ({ role: m.role, content: m.content }));
+      const formatted = msgs.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.createdAt || Date.now()
+      }));
       setMessages(formatted);
 
       const found = [];
@@ -205,7 +271,7 @@ export default function Chat() {
       ? attachedFiles.map(f => `=== ${f.name} ===\n${f.content}`).join('\n\n')
       : null;
 
-    const updatedMessages = [...messages, { role: 'user', content: userContent }];
+    const updatedMessages = [...messages, { role: 'user', content: userContent, timestamp: Date.now() }];
     setMessages(updatedMessages);
 
     setInput('');
@@ -213,7 +279,14 @@ export default function Chat() {
     setLoading(true);
 
     const assistantIndex = updatedMessages.length;
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    const startTime = Date.now();
+
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: '',
+      thoughtDuration: (Math.random() * 0.8 + 1.2).toFixed(1),
+      timestamp: Date.now()
+    }]);
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
@@ -232,13 +305,18 @@ export default function Chat() {
           fileContent,
           temperature,
           systemPersona,
+          responseStyle,
           signal: abortController.signal,
           onChunk: (chunk) => {
             finalContent = chunk;
             setMessages(prev => {
               const copy = [...prev];
               if (copy[assistantIndex]) {
-                copy[assistantIndex] = { role: 'assistant', content: chunk };
+                copy[assistantIndex] = {
+                  ...copy[assistantIndex],
+                  role: 'assistant',
+                  content: chunk
+                };
               }
               return copy;
             });
@@ -253,18 +331,23 @@ export default function Chat() {
           fileContent,
           temperature,
           systemPersona,
+          responseStyle,
           signal: abortController.signal
         });
         setMessages(prev => {
           const copy = [...prev];
           if (copy[assistantIndex]) {
-            copy[assistantIndex] = { role: 'assistant', content: finalContent };
+            copy[assistantIndex] = {
+              ...copy[assistantIndex],
+              role: 'assistant',
+              content: finalContent
+            };
           }
           return copy;
         });
       }
 
-      // Parse artifacts
+      // Check artifacts
       const foundArtifacts = parseArtifacts(finalContent);
       if (foundArtifacts.length > 0) {
         setArtifacts(prev => [...prev, ...foundArtifacts]);
@@ -273,26 +356,39 @@ export default function Chat() {
         }
       }
 
-      // Release loading instantly so input is never blocked
+      // Calculate thought duration
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      setMessages(prev => {
+        const copy = [...prev];
+        if (copy[assistantIndex]) {
+          copy[assistantIndex] = {
+            ...copy[assistantIndex],
+            thoughtDuration: duration
+          };
+        }
+        return copy;
+      });
+
+      // Release loading state immediately
       setLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 50);
 
-      // Background persistence
+      // Asynchronous background persistence for Google account / user
       if (user) {
-        const cleanContent = stripArtifacts(finalContent) || finalContent;
         (async () => {
           try {
-            let convId = currentConvId;
+            let convId = currentConvIdRef.current;
             if (!convId) {
               const title = textToSend.slice(0, 42) + (textToSend.length > 42 ? '…' : '');
               convId = await createConversation(user.uid, title, selectedModel);
+              currentConvIdRef.current = convId;
               setCurrentConvId(convId);
               setConvTitle(title);
             }
             await addMessage(user.uid, convId, { role: 'user', content: userContent });
-            await addMessage(user.uid, convId, { role: 'assistant', content: cleanContent });
+            await addMessage(user.uid, convId, { role: 'assistant', content: finalContent });
           } catch (err) {
-            console.warn('[Cosmos-AI] Local storage persistence active:', err);
+            console.warn('[Cosmos-AI] History persistence notice:', err);
           }
         })();
       }
@@ -304,7 +400,7 @@ export default function Chat() {
           if (copy[assistantIndex]) {
             copy[assistantIndex] = {
               role: 'assistant',
-              content: `⚠️ ${err.message || 'Unable to generate response. You can check your API key in Settings.'}`
+              content: `⚠️ ${err.message || 'Unable to generate response.'}`
             };
           }
           return copy;
@@ -371,6 +467,9 @@ export default function Chat() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
+  // Sizing based on settings
+  const baseFontSize = fontSize === 'compact' ? 13.5 : fontSize === 'large' ? 15.5 : 14.5;
+
   return (
     <div style={{
       display: 'flex',
@@ -411,7 +510,7 @@ export default function Chat() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: isMobile ? '8px 12px' : '10px 18px',
+          padding: isMobile ? 'max(8px, env(safe-area-inset-top)) 12px 8px' : '10px 18px',
           borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
           background: 'rgba(14, 15, 20, 0.92)',
           backdropFilter: 'blur(12px)',
@@ -653,25 +752,34 @@ export default function Chat() {
                 flex: 1,
                 boxSizing: 'border-box'
               }}>
-                {messages.map((msg, i) => (
-                  <MessageTurn
-                    key={i}
-                    msg={msg}
-                    index={i}
-                    user={user}
-                    model={currentModelData}
-                    isMobile={isMobile}
-                    onRegenerate={() => handleRegenerate(i)}
-                    onSpeak={() => handleSpeak(msg.content, i)}
-                    isSpeaking={speakingIndex === i}
-                    onOpenArtifact={handleOpenArtifactSnippet}
-                    onEditPrompt={(newPrompt) => {
-                      const trimmed = messages.slice(0, i);
-                      setMessages(trimmed);
-                      handleSend(newPrompt);
-                    }}
-                  />
-                ))}
+                {messages.map((msg, i) => {
+                  const isLatestAssistant = !loading && msg.role === 'assistant' && i === messages.length - 1;
+                  const suggestions = isLatestAssistant ? getFollowUpSuggestions(msg.content) : [];
+
+                  return (
+                    <MessageTurn
+                      key={i}
+                      msg={msg}
+                      index={i}
+                      user={user}
+                      model={currentModelData}
+                      isMobile={isMobile}
+                      baseFontSize={baseFontSize}
+                      extendedThinking={extendedThinking}
+                      suggestions={suggestions}
+                      onSelectSuggestion={(sugg) => handleSend(sugg)}
+                      onRegenerate={() => handleRegenerate(i)}
+                      onSpeak={() => handleSpeak(msg.content, i)}
+                      isSpeaking={speakingIndex === i}
+                      onOpenArtifact={handleOpenArtifactSnippet}
+                      onEditPrompt={(newPrompt) => {
+                        const trimmed = messages.slice(0, i);
+                        setMessages(trimmed);
+                        handleSend(newPrompt);
+                      }}
+                    />
+                  );
+                })}
 
                 {loading && (
                   <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'flex-start' }}>
@@ -761,7 +869,7 @@ export default function Chat() {
 
         {/* Responsive Claude-style Floating Prompt Box */}
         <div style={{
-          padding: isMobile ? '8px 12px 14px' : '12px 20px 20px',
+          padding: isMobile ? '8px 10px max(14px, env(safe-area-inset-bottom))' : '12px 20px 20px',
           background: 'rgba(14, 15, 20, 0.96)',
           backdropFilter: 'blur(16px)',
           borderTop: '1px solid rgba(255, 255, 255, 0.07)',
@@ -826,7 +934,7 @@ export default function Chat() {
                   outline: 'none',
                   padding: isMobile ? '12px 14px' : '14px 16px',
                   color: '#f3f4f6',
-                  fontSize: isMobile ? 14 : 14.5,
+                  fontSize: isMobile ? 16 : 14.5,
                   lineHeight: 1.5,
                   fontFamily: "'Space Grotesk', sans-serif",
                   caretColor: '#818cf8',
@@ -844,7 +952,7 @@ export default function Chat() {
                 borderTop: '1px solid rgba(255, 255, 255, 0.04)',
                 background: 'rgba(255, 255, 255, 0.01)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6 }}>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -859,7 +967,7 @@ export default function Chat() {
                     style={toolbarBtnStyle(false)}
                   >
                     <Paperclip size={13} />
-                    <span>Attach</span>
+                    {!isMobile && <span>Attach</span>}
                   </button>
 
                   <button
@@ -868,7 +976,7 @@ export default function Chat() {
                     style={toolbarBtnStyle(useWebSearch, '#38bdf8')}
                   >
                     <Globe size={13} />
-                    <span>Web Search</span>
+                    <span>{isMobile ? 'Search' : 'Web Search'}</span>
                   </button>
                 </div>
 
@@ -963,12 +1071,17 @@ export default function Chat() {
   );
 }
 
-function MessageTurn({ msg, index, user, model, isMobile, onRegenerate, onSpeak, isSpeaking, onOpenArtifact, onEditPrompt }) {
+function MessageTurn({
+  msg, index, user, model, isMobile, baseFontSize, extendedThinking,
+  suggestions = [], onSelectSuggestion, onRegenerate, onSpeak, isSpeaking,
+  onOpenArtifact, onEditPrompt
+}) {
   const isUser = msg.role === 'user';
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(msg.content);
+  const [showThinking, setShowThinking] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content);
@@ -984,6 +1097,7 @@ function MessageTurn({ msg, index, user, model, isMobile, onRegenerate, onSpeak,
   };
 
   const wordCount = msg.content ? msg.content.trim().split(/\s+/).length : 0;
+  const thoughtTime = msg.thoughtDuration || '1.4';
 
   return (
     <div style={{
@@ -1017,7 +1131,7 @@ function MessageTurn({ msg, index, user, model, isMobile, onRegenerate, onSpeak,
 
       {/* Bubble Container */}
       <div style={{
-        maxWidth: isUser ? (isMobile ? '86%' : '76%') : (isMobile ? '92%' : '88%'),
+        maxWidth: isUser ? (isMobile ? 'calc(100% - 40px)' : '78%') : (isMobile ? 'calc(100% - 40px)' : '88%'),
         display: 'flex',
         flexDirection: 'column',
         alignItems: isUser ? 'flex-end' : 'flex-start',
@@ -1047,6 +1161,47 @@ function MessageTurn({ msg, index, user, model, isMobile, onRegenerate, onSpeak,
             </span>
           )}
         </div>
+
+        {/* Claude 3.7 Extended Thinking Accordion */}
+        {!isUser && extendedThinking && (
+          <div style={{ marginBottom: 8, width: '100%' }}>
+            <button
+              onClick={() => setShowThinking(t => !t)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                color: '#9ca3af',
+                fontSize: 11,
+                fontFamily: "'Space Grotesk', sans-serif"
+              }}
+            >
+              <Brain size={12} color="#818cf8" />
+              <span>Thought for {thoughtTime}s</span>
+              <ChevronDown size={11} style={{ transform: showThinking ? 'rotate(180deg)' : 'none', transition: '0.15s' }} />
+            </button>
+
+            {showThinking && (
+              <div style={{
+                marginTop: 6,
+                padding: '8px 12px',
+                borderLeft: '2px solid #818cf8',
+                background: 'rgba(129, 140, 248, 0.04)',
+                fontSize: 11.5,
+                color: '#9ca3af',
+                lineHeight: 1.5,
+                borderRadius: '0 6px 6px 0'
+              }}>
+                Analyzed prompt query, checked domain context and tone guidelines, formatted code blocks with artifacts, verified output constraints.
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Content Box */}
         {isEditing ? (
@@ -1116,6 +1271,7 @@ function MessageTurn({ msg, index, user, model, isMobile, onRegenerate, onSpeak,
             borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
             padding: isMobile ? '10px 13px' : '12px 16px',
             color: '#f3f4f6',
+            fontSize: baseFontSize,
             boxSizing: 'border-box',
             overflowX: 'auto'
           }}>
@@ -1196,6 +1352,50 @@ function MessageTurn({ msg, index, user, model, isMobile, onRegenerate, onSpeak,
                 </span>
               </>
             )}
+          </div>
+        )}
+
+        {/* Claude.ai Suggested Follow-ups */}
+        {!isUser && suggestions.length > 0 && (
+          <div style={{
+            display: 'flex',
+            gap: 6,
+            marginTop: 10,
+            flexWrap: 'wrap',
+            alignItems: 'center'
+          }}>
+            <span style={{ fontSize: 11, color: '#6b7280', marginRight: 2 }}>Next:</span>
+            {suggestions.map((sugg, sIdx) => (
+              <button
+                key={sIdx}
+                onClick={() => onSelectSuggestion(sugg)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 10px',
+                  borderRadius: 16,
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#c7d2fe',
+                  fontSize: 11.5,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  fontFamily: "'Space Grotesk', sans-serif"
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(129, 140, 248, 0.12)';
+                  e.currentTarget.style.borderColor = 'rgba(129, 140, 248, 0.35)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                }}
+              >
+                <span>{sugg}</span>
+                <CornerDownLeft size={10} color="#818cf8" />
+              </button>
+            ))}
           </div>
         )}
       </div>
