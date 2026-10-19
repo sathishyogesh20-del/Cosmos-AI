@@ -17,6 +17,7 @@ import ModelSelector from '../components/ModelSelector';
 import Sidebar from '../components/Sidebar';
 import SettingsPanel from '../components/SettingsPanel';
 import AdBanner from '../components/AdBanner';
+import PWAInstallButton from '../components/PWAInstallButton';
 
 const STARTERS = [
   {
@@ -546,6 +547,8 @@ export default function Chat() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <PWAInstallButton variant="compact" />
+
             {artifacts.length > 0 && (
               <button
                 onClick={() => setShowArtifacts(s => !s)}

@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { getConversations, deleteConversation, updateConversationTitle } from '../lib/firestore';
+import PWAInstallButton from './PWAInstallButton';
 
 export default function Sidebar({
   currentConvId,
@@ -553,6 +554,13 @@ export default function Sidebar({
               <Download size={13} />
               <span>Export History ({conversations.length})</span>
             </button>
+          )}
+
+          {/* PWA Install Button for mobile/desktop */}
+          {(isMobile || !collapsed) && (
+            <div style={{ marginBottom: 6 }}>
+              <PWAInstallButton variant="sidebar" />
+            </div>
           )}
 
           <button

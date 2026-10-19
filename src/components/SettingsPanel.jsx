@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   X, Globe, Cpu, Sparkles, Sliders, Type, Brain,
-  Trash2, Download, Check, ShieldCheck
+  Trash2, Download, Check, ShieldCheck, Smartphone
 } from 'lucide-react';
 import { useSettings, SYSTEM_PERSONAS, CLAUDE_STYLES } from '../contexts/SettingsContext';
+import PWAInstallButton from './PWAInstallButton';
 import { SUPPORTED_LANGUAGES } from '../lib/groq';
 import { COSMOS_MODELS } from '../lib/models';
 
@@ -475,6 +476,36 @@ export default function SettingsPanel() {
                 <p style={{ margin: 0, fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>
                   Cosmos-AI runs with client-side isolation. Your chat history, pinned threads, and generated artifacts are stored securely in your browser's private local database.
                 </p>
+              </div>
+
+              {/* Installable Mobile App PWA Card */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(124, 111, 255, 0.12), rgba(58, 16, 192, 0.18))',
+                border: '1px solid rgba(124, 111, 255, 0.28)',
+                borderRadius: 12,
+                padding: '16px',
+                marginBottom: 20
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Smartphone size={18} color="#a78bfa" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#f3f4f6' }}>Install as Mobile App (PWA)</span>
+                  </div>
+                  <span style={{
+                    fontSize: 11,
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    background: 'rgba(124, 111, 255, 0.25)',
+                    color: '#c4b5fd',
+                    fontWeight: 600
+                  }}>
+                    Standalone
+                  </span>
+                </div>
+                <p style={{ margin: '0 0 14px', fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>
+                  Install Cosmos-AI on your Android, iPhone, iPad, or desktop home screen for full-screen mode, faster startup, and offline caching.
+                </p>
+                <PWAInstallButton variant="sidebar" />
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

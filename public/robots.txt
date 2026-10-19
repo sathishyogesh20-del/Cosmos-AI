@@ -1,0 +1,9 @@
+# Robots.txt for Cosmos-AI
+# Google Search Console and web crawlers directives
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://ais-pre-nwbplohn6muw62qjsnluqf-675358651461.asia-southeast1.run.app/sitemap.xml
